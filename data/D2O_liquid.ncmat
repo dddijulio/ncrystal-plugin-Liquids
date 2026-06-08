@@ -2,10 +2,10 @@ NCMAT v5
 #
 # Heavy Water (D2O) 
 #
-@STATEOFMATTER
-  solid
 @DENSITY
-  1.0 g_per_cm3 #Dummy value
+  1.10526 g_per_cm3 
+@TEMPERATURE     
+293.6
 @DYNINFO
   element  D
   fraction 2/3

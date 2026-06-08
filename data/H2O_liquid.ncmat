@@ -2,10 +2,10 @@ NCMAT v5
 #
 # Light Water (H2O) 
 #
-@STATEOFMATTER
-  solid
 @DENSITY
-  1.0 g_per_cm3 #Dummy value
+  0.99820 g_per_cm3 
+@TEMPERATURE     
+293.6
 @DYNINFO
   element  H
   fraction 2/3
