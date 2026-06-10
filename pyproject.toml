@@ -20,7 +20,7 @@
 ################################################################################
 
 [project]
-name = "ncrystal-plugin-LIQUIDS"
+name = "ncrystal-plugin-Liquids"
 version = "0.0.1"
 license = {file = "LICENSE"}
 dependencies = [ "ncrystal-core>=4.0.0", "ncrystal-pypluginmgr>=0.0.5" ]
