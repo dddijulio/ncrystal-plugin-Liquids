@@ -1,4 +1,4 @@
-NCMAT v5
+NCMAT v7
 #
 # tsl-ortho-D 23K
 #
@@ -15,6 +15,8 @@ NCMAT v5
 #
 @DENSITY
   0.16425 g_per_cm3
+@TEMPERATURE
+23
 @DYNINFO
   element  D
   fraction 1
