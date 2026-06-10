@@ -25,4 +25,4 @@ Each entry begins with a single line specifying the atom and its scattering para
 - `<Q_i>`, `<S_i>`: structure-factor rows, with *Q* in Å⁻¹ and *S(Q)* dimensionless; omitted when `<model>` is `incoherent`.
 
 # Reference
-D. D. DiJulio, J. I. Marquez Damian, T. Kitelmann and G. Muhrer, A liquids plugin for NCrystal. Presented at ICANS XXV  (13-17 April 2026). https://indico.ess.eu/event/3811/contributions/24554/
+D. D. DiJulio, J. I. Marquez Damian, T. Kittelmann and G. Muhrer, A liquids plugin for NCrystal. Presented at ICANS XXV  (13-17 April 2026). https://indico.ess.eu/event/3811/contributions/24554/
