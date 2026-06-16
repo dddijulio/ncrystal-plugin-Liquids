@@ -634,6 +634,66 @@ NCP::PhysicsModel::sampleScatteringEvent( NC::RNG& rng,
   return result;
 }
 
+// Numerical evaluaion of the modified Bessel function I1
+// Adapted from polynimial expansion in Abramowitz and Stegun, vol. 55, sec. 9.8
+double bessel_i1( double x ){
+    double t = x / 3.75;
+    double t2 = t*t;
+    double res;
+    if (t < 1.0){
+        res = (0.5
+               + t2*(0.87890594
+               + t2*(0.51498869
+               + t2*(0.15084934
+               + t2*(0.02658733
+               + t2*(0.00301532
+               +  t2*0.00032411))))));
+        return res * x;
+    } else {
+        double u = 1.0/t;
+        res = (     0.39894228
+                - u*(0.03988024
+                + u*(0.00362018
+                - u*(0.00163801
+                - u*(0.01031555
+                - u*(0.02282967
+                - u*(0.02895312
+                - u*(0.01787654
+                - u*0.00420059))))))));
+        return res*std::exp(x)/std::sqrt(x);
+    }
+}
+
+// Numerical evaluaion of the modified Bessel function K1
+// Adapted from polynimial expansion in Abramowitz and Stegun, vol. 55, sec. 9.8
+double bessel_k1( double x ){
+    double t = 0.5*x;
+    double t2 = t*t;
+    double res;
+    if (t < 1.0){
+        res = ( x * std::log(t) * bessel_i1(x)
+                + 1.0
+                + t2*(0.15443144
+                - t2*(0.67278579
+                + t2*(0.18156897
+                + t2*(0.01919402
+                + t2*(0.00110404
+                +  t2*0.00004686))))));
+        return res/x;
+    } else {
+        double u = 1.0 / t;
+        res = (      1.25331414
+                + u*(0.23498619
+                - u*(0.03655620
+                - u*(0.01504268
+                - u*(0.00780353
+                - u*(0.00325614
+                -  u*0.00068245))))));
+        return res * std::exp(-x) / std::sqrt(x);
+    }
+}
+
+
 // Helper: stable evaluation of exp(var) * K1(x)
 static inline double stable_exp_times_K1( double var, double x ) {
   // Platform-derived safe exponent limits
@@ -645,7 +705,7 @@ static inline double stable_exp_times_K1( double var, double x ) {
 
   // 1) Direct evaluation
   double direct = 0.0;
-  double k1v = std::cyl_bessel_k( 1.0, x );
+  double k1v = bessel_k1(x);
   if ( std::isfinite(k1v) && k1v > 0.0 ) {
     double val = std::exp( clampExp(var) ) * k1v;
     if ( std::isfinite(val) && val > 0.0 )
