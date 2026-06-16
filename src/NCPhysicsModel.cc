@@ -693,6 +693,89 @@ double bessel_k1( double x ){
     }
 }
 
+double spherical_jn(int n, double x) {
+    /*
+    Implementation of the spherical Bessel function j_n(x).
+    */
+    if (n < 0 || x < 0.0)
+        return 0.0;
+    if (x == 0.0)
+        return n == 0 ? 1.0 : 0.0;
+
+    // Small-x power series from j_n(x)=sqrt(pi/(2x))*J_{n+1/2}(x):
+    //   https://dlmf.nist.gov/10.47.E3
+    // with the Bessel-J power series:
+    //   https://dlmf.nist.gov/10.2.E2
+    // Near x=0, evaluate the power series directly instead of using recurrence,
+    // which is numerically unstable for higher orders.
+    if (x < 0.1) {
+        // Leading small-x term j_n(x) ~ x^n/(2n+1)!!:
+        //   https://dlmf.nist.gov/10.52.E1
+        double leading = 1.0;
+        for (int k = 1; k <= n; ++k)
+            leading *= x / double(2 * k + 1);
+
+        // Higher-order correction terms from the J_{n+1/2} power series:
+        //   https://dlmf.nist.gov/10.2.E2
+        double term = 1.0;
+        double series = 1.0;
+        double y = -0.25 * x * x;
+        for (int k = 1; k < 32; ++k) {
+            term *= y / (double(k) * (double(n + k) + 0.5));
+            series += term;
+            if (std::abs(term) <= 1.0e-16 * std::max(1.0, std::abs(series)))
+                break;
+        }
+        return leading * series;
+    }
+
+    // Exact base values j_0(x)=sin(x)/x and
+    // j_1(x)=sin(x)/x^2-cos(x)/x.
+    double j0 = std::sin(x) / x;
+    if (n == 0)
+        return j0;
+    double j1 = std::sin(x) / (x * x) - std::cos(x) / x;
+    if (n == 1)
+        return j1;
+
+    // Upward use of the three-term recurrence:
+    //   j_{n+1}(x)=(2n+1)j_n(x)/x-j_{n-1}(x)
+    //   https://dlmf.nist.gov/10.51.E1
+    // This is stable when x is larger than n.
+    if (x > n) {
+        double jm1 = j0;
+        double j = j1;
+        for (int ell = 1; ell < n; ++ell) {
+            double jp1 = (2 * ell + 1) * j / x - jm1;
+            jm1 = j;
+            j = jp1;
+        }
+        return j;
+    }
+
+    // Downward use of the same three-term recurrence:
+    //   https://dlmf.nist.gov/10.51.E1
+    // This is stable when x is less than or comparable to n. The result is
+    // normalized to the exact j_0 value computed above.
+    int m = std::max(n + 32, int(x) + 32);
+    double jp1 = 0.0;
+    double j = 1.0;
+    double target = 0.0;
+    for (int ell = m; ell > 0; --ell) {
+        double jm1 = (2 * ell + 1) * j / x - jp1;
+        if (ell - 1 == n)
+            target = jm1;
+        jp1 = j;
+        j = jm1;
+        if (std::abs(j) > 1.0e100) {
+            jp1 *= 1.0e-100;
+            j *= 1.0e-100;
+            target *= 1.0e-100;
+        }
+    }
+    return j0 * target / j;
+}
+
 
 // Helper: stable evaluation of exp(var) * K1(x)
 static inline double stable_exp_times_K1( double var, double x ) {
@@ -979,7 +1062,7 @@ NC::SABData applyYoungKoppel(const NC::SABData& sabdata,
     for (int J = 0; J <= J_max; ++J)
       for (int Jp = 0; Jp <= J_max; ++Jp)
         for (int l = std::abs(J-Jp); l <= J+Jp; l += 2) {
-          double jl = std::sph_bessel(l, y);
+          double jl = spherical_jn(l, y);
           G_fac[J][Jp][ia] += 4.0 * jl*jl * cg_sq[J][Jp][l];
         }
   }
