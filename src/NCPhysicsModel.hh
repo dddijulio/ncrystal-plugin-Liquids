@@ -25,6 +25,7 @@
 #include "NCrystal/NCPluginBoilerplate.hh"//Common stuff (includes NCrystal
                                           //public API headers, sets up
                                           //namespaces and aliases)
+#include <unordered_map> // for MSVC
 
 namespace NCPluginNamespace {
 
