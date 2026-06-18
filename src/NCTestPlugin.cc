@@ -26,12 +26,15 @@
 #include <cmath>
 #include <string>
 
+double spherical_jn(int n, double x);
+double bessel_k1(double x);
+
 void NCP::customPluginTest()
 {
   //This function is called by NCrystal after the plugin is loaded, but only if
   //the NCRYSTAL_PLUGIN_RUNTESTS environment variable is set to "1". In case of
   //errors or anything about the plugin not working, simply throw an exception
-  //(or use nc_assert_always).
+  //or use nc_assert_always.
 
   //Note, emit all messages here and elsewhere in plugin code with NCPLUGIN_MSG
   //(or NCPLUGIN_WARN for warnings), never raw usage of std::cout or printf!
@@ -106,7 +109,7 @@ void NCP::customPluginTest()
     }
   }
 
-  NCPLUGIN_MSG("Cross-section regression checks passed");
+  NCPLUGIN_MSG("Cross-section reference checks passed");
 
   // Sampling sanity check.
   NCPLUGIN_MSG("Checking sampled scattering events");
@@ -134,5 +137,122 @@ void NCP::customPluginTest()
   }
 
   NCPLUGIN_MSG("Sampling sanity checks passed");
+
+  const double specialfunc_abs_tol = 1.0e-12;
+  const double specialfunc_rel_tol = 1.0e-6;
+
+  // Spherical Bessel check against reference values.
+  // Reference values generated with Python scipy.special.spherical_jn.
+  NCPLUGIN_MSG("Checking spherical Bessel values against reference values");
+
+  struct SphericalJnTestCase {
+    int n;
+    double x;
+    double ref;
+  };
+
+  const SphericalJnTestCase spherical_jn_testcases[] = {
+    { 0, 0.0, 1.0 },
+    { 0, 9.9999999999999995e-07, 0.99999999999983336 },
+    { 0, 0.0001, 0.99999999833333342 },
+    { 0, 0.01, 0.99998333341666645 },
+    { 0, 0.10000000000000001, 0.99833416646828155 },
+    { 0, 1.0, 0.8414709848078965 },
+    { 0, 5.0, -0.1917848549326277 },
+    { 0, 10.0, -0.054402111088936979 },
+    { 0, 20.0, 0.045647262536381385 },
+    { 1, 0.0, 0.0 },
+    { 1, 9.9999999999999995e-07, 3.3333333333330117e-07 },
+    { 1, 0.0001, 3.3333333300000061e-05 },
+    { 1, 0.01, 0.0033333000001190523 },
+    { 1, 0.10000000000000001, 0.033300011902557616 },
+    { 1, 1.0, 0.30116867893975707 },
+    { 1, 5.0, -0.095089408079170795 },
+    { 1, 10.0, 0.078466941798751549 },
+    { 1, 20.0, -0.018121739963850528 },
+    { 2, 0.0, 0.0 },
+    { 2, 0.0001, 6.666666661904783e-10 },
+    { 2, 0.01, 6.6666190477513343e-06 },
+    { 2, 0.10000000000000001, 0.00066619060844556942 },
+    { 2, 1.0, 0.062035052011373916 },
+    { 2, 5.0, 0.13473121008512523 },
+    { 2, 10.0, 0.077942193628562445 },
+    { 2, 20.0, -0.048365523530958965 },
+    { 5, 0.0, 0.0 },
+    { 5, 0.10000000000000001, 9.6163102329164501e-10 },
+    { 5, 1.0, 9.2561158611258252e-05 },
+    { 5, 5.0, 0.1068111614565046 },
+    { 5, 10.0, -0.055534511621452162 },
+    { 5, 20.0, 0.016683908063095696 },
+    { 10, 0.0, 0.0 },
+    { 10, 1.0, 7.1165526400473407e-11 },
+    { 10, 5.0, 0.00040734424424946199 },
+    { 10, 10.0, 0.064605154492563974 },
+    { 10, 20.0, 0.039686698644626373 },
+    { 20, 0.0, 0.0 },
+    { 20, 5.0, 5.4277267607932615e-12 },
+    { 20, 10.0, 2.3083719613194551e-06 },
+    { 20, 20.0, 0.038324851639805507 }
+  };
+
+  for ( const auto& testcase : spherical_jn_testcases ) {
+    const double val = spherical_jn(testcase.n, testcase.x);
+    const double ref = testcase.ref;
+    const double diff = std::abs(val-ref);
+    if ( !std::isfinite(val)
+         || ( diff > specialfunc_abs_tol
+              && diff > specialfunc_rel_tol * std::abs(ref) ) ) {
+      NCPLUGIN_MSG( "Spherical Bessel check failed for n=" << testcase.n
+                    << ", x=" << testcase.x
+                    << ": value=" << val
+                    << ", ref=" << ref
+                    << ", absdiff=" << diff
+                    << ", abs_tol=" << specialfunc_abs_tol
+                    << ", rel_tol=" << specialfunc_rel_tol );
+      nc_assert_always( false );
+    }
+  }
+
+  NCPLUGIN_MSG("Spherical Bessel checks passed");
+
+  // Modified Bessel K1 check against reference values.
+  // Reference values generated with Python scipy.special.k1.
+  NCPLUGIN_MSG("Checking K1 values against reference values");
+
+  struct K1TestCase {
+    double x;
+    double ref;
+  };
+
+  const K1TestCase k1_testcases[] = {
+    { 9.9999999999999995e-07, 999999.99999278435 },
+    { 0.0001, 9999.9995086864055 },
+    { 0.01, 99.973894118296229 },
+    { 0.10000000000000001, 9.853844780870606 },
+    { 1.0, 0.60190723019723458 },
+    { 2.0, 0.13986588181652246 },
+    { 5.0, 0.0040446134454521629 },
+    { 10.0, 1.8648773453825585e-05 },
+    { 20.0, 5.8830579695570384e-10 }
+  };
+
+  for ( const auto& testcase : k1_testcases ) {
+    const double val = bessel_k1(testcase.x);
+    const double ref = testcase.ref;
+    const double diff = std::abs(val-ref);
+    if ( !std::isfinite(val)
+         || ( diff > specialfunc_abs_tol
+              && diff > specialfunc_rel_tol * std::abs(ref) ) ) {
+      NCPLUGIN_MSG( "K1 check failed for x=" << testcase.x
+                    << ": value=" << val
+                    << ", ref=" << ref
+                    << ", absdiff=" << diff
+                    << ", abs_tol=" << specialfunc_abs_tol
+                    << ", rel_tol=" << specialfunc_rel_tol );
+      nc_assert_always( false );
+    }
+  }
+
+  NCPLUGIN_MSG("K1 checks passed");
   NCPLUGIN_MSG("All tests of plugin were successful!");
 }
