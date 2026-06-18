@@ -27,7 +27,7 @@ jobs:
     - name: Install plugin
       run: pip install ./src
 
-    - name: Verify plugin loading
+    - name: Run plugin self-tests
       run: ncrystal-pluginmanager --test Liquids
 
     - name: Use explicit plugin file
