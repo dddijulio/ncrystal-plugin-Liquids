@@ -107,5 +107,32 @@ void NCP::customPluginTest()
   }
 
   NCPLUGIN_MSG("Cross-section regression checks passed");
+
+  // Sampling sanity check.
+  NCPLUGIN_MSG("Checking sampled scattering events");
+  const unsigned nsamples = 20;
+
+  for ( const auto& testcase : testcases ) {
+    auto scatter = NC::createScatter( std::string("plugins::Liquids/")
+                                      + testcase.material );
+    for ( const auto& energy : energies ) {
+      for ( unsigned i = 0; i < nsamples; ++i ) {
+        auto event = scatter.sampleScatterIsotropic(
+          NC::NeutronEnergy{ energy } );
+        const double eout = event.ekin.dbl();
+        const double mu = event.mu.dbl();
+        if ( !std::isfinite(eout) || eout < 0.0
+             || !std::isfinite(mu) || mu < -1.0 || mu > 1.0 ) {
+          NCPLUGIN_MSG( "Sampling check failed for "
+                        << testcase.material
+                        << " at E=" << energy << " eV: eout=" << eout
+                        << ", mu=" << mu );
+          nc_assert_always( false );
+        }
+      }
+    }
+  }
+
+  NCPLUGIN_MSG("Sampling sanity checks passed");
   NCPLUGIN_MSG("All tests of plugin were successful!");
 }
