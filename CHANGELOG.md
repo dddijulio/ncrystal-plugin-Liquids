@@ -18,10 +18,6 @@
 - Added modified Bessel `K1` support for the Egelstaff diffusion model.
 - Added GitHub Actions CI.
 
-### Notes
-
-- Improves compiler portability by removing reliance on C++ standard-library special Bessel functions.
-
 ## v1.0.0
 
 - Initial release.
