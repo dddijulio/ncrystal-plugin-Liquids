@@ -28,6 +28,9 @@
 #include <iomanip>
 #include "NCrystal/internal/vdos/NCVDOSToScatKnl.hh"
 #include "NCrystal/internal/sabscatter/NCSABScatter.hh"
+#if NCRYSTAL_VERSION >= 4004007
+#include "NCrystal/internal/sabscatter/NCSABScatterNG.hh"
+#endif
 #include "NCrystal/internal/sab/NCSABFactory.hh"
 #include "NCrystal/internal/sab/NCSABExtender.hh"
 #include "NCrystal/internal/sab/NCSABIntegrator.hh"
@@ -427,7 +430,7 @@ bool NCP::PhysicsModel::isApplicable( const NC::Info& info )
   return info.countCustomSections(pluginNameUpperCase()) > 0;
 }
 
-NCP::PhysicsModel NCP::PhysicsModel::createFromInfo( const NC::Info& info )
+NCP::PhysicsModel NCP::PhysicsModel::createFromInfo( const NC::Info& info, int vdoslux, int knllux )
 {
   //Parse the content of our custom section. In case of syntax errors, we should
   //raise BadInput exceptions, to make sure users gets understandable error
@@ -527,10 +530,27 @@ NCP::PhysicsModel NCP::PhysicsModel::createFromInfo( const NC::Info& info )
       kv.second.yk_model = yk_model;
 
   //Parsing done! Create and return our model:
-  return PhysicsModel(liquid_data,info);
+  return PhysicsModel(liquid_data,info,vdoslux,knllux);
 }
 
-NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liquid_data, const NC::Info& info )
+// Wraps a finished S(alpha,beta) in a scatter process. knllux >= 0 (NCrystal >= 4.4.7
+// only) selects the next-gen SABScatterNG; otherwise the legacy SABScatter is used.
+static NC::ProcImpl::ProcPtr makeSABScatterProc( NC::SABData&& sabdata, int knllux )
+{
+#if NCRYSTAL_VERSION >= 4004007
+  if ( knllux >= 0 ) {
+    auto sabdata_so = NC::makeSO<const NC::SABData>( std::move(sabdata) );
+    auto sabext = NC::SAB::createSABExtendedNoCache( knllux, sabdata_so );
+    return NC::makeSO<NC::SABScatterNG>( std::move(sabext), sabdata_so->boundXS() );
+  }
+#else
+  (void)knllux;
+#endif
+  return NC::makeSO<NC::SABScatter>( std::move(sabdata) );
+}
+
+NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liquid_data,
+                                 const NC::Info& info, int vdoslux, int knllux )
   : m_liquid_data(liquid_data)
 {
   NC::ProcImpl::ProcComposition::ComponentList components;
@@ -566,7 +586,11 @@ NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liq
        // Calculate dwi, used for the Debye-Waller factor exp(-alpha*dwi)
        double dwi = msd * 2.0 * mass_neutron / (hbar * hbar) * bk * temperature * liquid_data[lbl].ws;  // unitless
        
-       NC::ScatKnlData skd = NC::createScatteringKernel(di_vdos->vdosData(), 3,  0, NC::VDOSGn::TruncAndThinningChoices::Default);
+#if NCRYSTAL_VERSION >= 4004007
+       NC::ScatKnlData skd = NC::VDOS::createScatteringKernel(di_vdos->vdosData(), NC::VDOS::VDOSLux(vdoslux));
+#else
+       NC::ScatKnlData skd = NC::createScatteringKernel(di_vdos->vdosData(), vdoslux,  0, NC::VDOSGn::TruncAndThinningChoices::Default);
+#endif
        NC::SABData sabdata = NC::SABUtils::transformKernelToStdFormat(std::move(skd));
 
        ConvolutionParams convParams = {dwi, delta_beta_vdos, awr, liquid_data[lbl]};
@@ -577,7 +601,7 @@ NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liq
        // Young-Koppel (+ coherent correction if Skold or Vineyard)
        if (!liquid_data[lbl].yk_model.empty()) {
          NC::SABData yk_data = applyYoungKoppel(s_s, liquid_data[lbl].yk_model, di->atomData(), liquid_data[lbl]);
-         components.push_back({di->fraction(), NC::makeSO<NC::SABScatter>(std::move(yk_data))});
+         components.push_back({di->fraction(), makeSABScatterProc(std::move(yk_data), knllux)});
 
        // Coherent correction only (no Young-Koppel)
        } else if (liquid_data[lbl].coherent_model == "SKOLD" || liquid_data[lbl].coherent_model == "VINEYARD") {
@@ -597,11 +621,11 @@ NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liq
          }
          NC::SABData corrected(NC::VectD(alpha_grid), NC::VectD(beta_grid), std::move(sab_out),
                                s_s.temperature(), s_s.boundXS(), s_s.elementMassAMU(), s_s.suggestedEmax());
-         components.push_back({di->fraction(), NC::makeSO<NC::SABScatter>(std::move(corrected))});
+         components.push_back({di->fraction(), makeSABScatterProc(std::move(corrected), knllux)});
 
        // Translational kernel only
        } else {
-         components.push_back({di->fraction(), NC::makeSO<NC::SABScatter>(std::move(s_s))});
+         components.push_back({di->fraction(), makeSABScatterProc(std::move(s_s), knllux)});
        }
 
      }
