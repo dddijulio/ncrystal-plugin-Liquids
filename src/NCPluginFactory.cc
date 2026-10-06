@@ -102,8 +102,15 @@ NCP::PluginFactory::produce( const NC::FactImpl::ScatterRequest& cfg ) const
 {
   //Ok, we are selected as the provider! First create our own scatter model:
 
+#if NCRYSTAL_VERSION >= 4004007
+  const int knllux = cfg.get_knllux();
+#else
+  const int knllux = -1;
+#endif
   auto sc_ourmodel
-    = NC::makeSO<PluginScatter>( PhysicsModel::createFromInfo( cfg.info() ) );
+    = NC::makeSO<PluginScatter>( PhysicsModel::createFromInfo( cfg.info(),
+                                                               cfg.get_vdoslux(),
+                                                               knllux ) );
 
   //Now we just need to combine this with all the other physics
   //(i.e. Bragg+inelastic).  So ask the framework to set this up, except for

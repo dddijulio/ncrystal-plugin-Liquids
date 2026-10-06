@@ -52,7 +52,7 @@ namespace NCPluginNamespace {
     //case of syntax errors in the @CUSTOM_ section data):
 
     static bool isApplicable( const NC::Info& );
-    static PhysicsModel createFromInfo( const NC::Info& );//will raise BadInput
+    static PhysicsModel createFromInfo( const NC::Info&, int vdoslux = 3, int knllux = -1 );//will raise BadInput
                                                           //in case of syntax
                                                           //errors
 
@@ -62,7 +62,7 @@ namespace NCPluginNamespace {
 
     //Constructor gets constant cross section value, and the neutron wavelength
     //cutoff:
-    PhysicsModel(  std::unordered_map<std::string, LiquidInfo> liquid_data, const NC::Info&  );
+    PhysicsModel(  std::unordered_map<std::string, LiquidInfo> liquid_data, const NC::Info&, int vdoslux = 3, int knllux = -1 );
 
     //Provide cross sections for a given neutron:
     double calcCrossSection( double neutron_ekin ) const;
