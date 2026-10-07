@@ -39,8 +39,10 @@ void NCP::customPluginTest()
   //Note, emit all messages here and elsewhere in plugin code with NCPLUGIN_MSG
   //(or NCPLUGIN_WARN for warnings), never raw usage of std::cout or printf!
 
-  // Cross-section check against v1.0.0 reference values.
-  NCPLUGIN_MSG("Checking cross sections against v1.0.0 reference values");
+  // Cross-section checks against reference values. For NCrystal < 4.4.7 these
+  // are the v1.0.0 references (default cfg), while for NCrystal >= 4.4.7 the
+  // legacy (vdoslux=100x) and next-gen (vdoslux=200x, here with knllux>=0)
+  // VDOS expansion and kernel code paths are checked separately.
   const double xs_reldiff_tol = 1.0e-4;
   const double energies[] = {
     1.0000000000000001e-05,
@@ -88,26 +90,100 @@ void NCP::customPluginTest()
         3.4305998025225555 } }
   };
 
-  for ( const auto& testcase : testcases ) {
-    auto scatter = NC::createScatter( std::string("plugins::Liquids/")
-                                      + testcase.material );
-    for ( unsigned i = 0; i < 10; ++i ) {
-      const double xs = scatter.crossSectionIsotropic(
-        NC::NeutronEnergy{ energies[i] } ).dbl();
-      const double ref = testcase.xs[i];
-      const double reldiff = std::abs(xs/ref - 1.0);
-      if ( !std::isfinite(xs) || !std::isfinite(ref) || ref <= 0.0
-           || reldiff > xs_reldiff_tol ) {
-        NCPLUGIN_MSG( "Cross-section check failed for "
-                      << testcase.material
-                      << " at E=" << energies[i] << " eV: xs=" << xs
-                      << ", ref=" << ref
-                      << ", reldiff=" << reldiff
-                      << ", tolerance=" << xs_reldiff_tol );
-        nc_assert_always( false );
+#if NCRYSTAL_VERSION >= 4004007
+  //cfg-string suffix: ";vdoslux=1003"
+  const XSTestCase testcases_lux1003[] = {
+    { "H2O_liquid.ncmat",
+      { 349.68860670826984, 216.95720794156142, 143.32164238601615,
+        101.99670056641581, 77.07205422904022, 59.16582821290043,
+        44.10570892357182, 28.828395938372992, 20.94254269958944,
+        16.387305885459533 } },
+    { "D2O_liquid.ncmat",
+      { 34.292267970826444, 19.66902727253726, 11.699731908833066,
+        7.520012166061509, 6.200540100961053, 7.560713296387448,
+        5.2874020756598465, 4.392863547002103, 3.8603421620788003,
+        3.5770598237447935 } },
+    { "H2_liquid.ncmat",
+      { 332.53600551975643, 196.6100753518214, 122.67363741524395,
+        82.69756262837063, 60.63225967244287, 46.73972892981013,
+        39.1595554308574, 37.11558271213108, 36.4818503569056,
+        36.04209429140622 } },
+    { "tsl-para-H_20K.ncmat",
+      { 1.5058426416777533, 0.8370867943060853, 0.48582889170896626,
+        0.33408748384607956, 0.4736773913212324, 1.2622475573669047,
+        1.7409006385962953, 21.51039626419283, 22.863306869648106,
+        21.92168424807105 } },
+    { "tsl-ortho-D_20K.ncmat",
+      { 9.66007553849666, 6.219195876743282, 4.312276564962671,
+        3.2771099680931597, 3.062791516339882, 6.923048242075658,
+        5.43813676816883, 3.651363983596703, 3.8577063035791195,
+        3.4308149205900786 } }
+  };
+  //cfg-string suffix: ";vdoslux=2003;knllux=3"
+  const XSTestCase testcases_lux2003[] = {
+    { "H2O_liquid.ncmat",
+      { 347.0453652037759, 215.51313671696252, 142.5598419061876,
+        101.60610606172612, 76.85159170484907, 59.03401057005783,
+        44.01571221622327, 28.791519697161924, 20.95147378326106,
+        16.419144945867117 } },
+    { "D2O_liquid.ncmat",
+      { 34.32290388486081, 19.685529489601635, 11.708867555147295,
+        7.529770538231073, 6.210461098515053, 7.547926312917021,
+        5.265904064738971, 4.381744963702532, 3.855479748678989,
+        3.5738542743034776 } },
+    { "H2_liquid.ncmat",
+      { 331.9389313339691, 196.27764050306524, 122.45669768407552,
+        82.5581119132845, 60.53448184831201, 46.65446894018038,
+        39.11092001956228, 37.10417045849309, 36.45836668404251,
+        36.0028835747014 } },
+    { "tsl-para-H_20K.ncmat",
+      { 1.5047274460949547, 0.8364718994539525, 0.48550841091250146,
+        0.33387823028410074, 0.4733043640975274, 1.2620986115346151,
+        1.7567936612260597, 21.545530986467373, 22.586028237383786,
+        21.913859060362554 } },
+    { "tsl-ortho-D_20K.ncmat",
+      { 9.656658721659783, 6.2160179408879275, 4.310935515447335,
+        3.2755622770868116, 3.060624974548767, 6.922678645361923,
+        5.437975993637925, 3.6511251206331794, 3.8251350356466163,
+        3.4280765083764635 } }
+  };
+#endif
+
+  auto checkXS = [&]( const XSTestCase* tcs, std::size_t ntcs,
+                      const char * cfgextra )
+  {
+    NCPLUGIN_MSG("Checking cross sections against reference values (cfg"
+                 " suffix: \""<<cfgextra<<"\")");
+    for ( std::size_t itc = 0; itc < ntcs; ++itc ) {
+      const auto& testcase = tcs[itc];
+      auto scatter = NC::createScatter( std::string("plugins::Liquids/")
+                                        + testcase.material + cfgextra );
+      for ( unsigned i = 0; i < 10; ++i ) {
+        const double xs = scatter.crossSectionIsotropic(
+          NC::NeutronEnergy{ energies[i] } ).dbl();
+        const double ref = testcase.xs[i];
+        const double reldiff = std::abs(xs/ref - 1.0);
+        if ( !std::isfinite(xs) || !std::isfinite(ref) || ref <= 0.0
+             || reldiff > xs_reldiff_tol ) {
+          NCPLUGIN_MSG( "Cross-section check failed for "
+                        << testcase.material << cfgextra
+                        << " at E=" << energies[i] << " eV: xs=" << xs
+                        << ", ref=" << ref
+                        << ", reldiff=" << reldiff
+                        << ", tolerance=" << xs_reldiff_tol );
+          nc_assert_always( false );
+        }
       }
     }
-  }
+  };
+
+  constexpr std::size_t ntestcases = sizeof(testcases)/sizeof(testcases[0]);
+#if NCRYSTAL_VERSION >= 4004007
+  checkXS( testcases_lux1003, ntestcases, ";vdoslux=1003" );
+  checkXS( testcases_lux2003, ntestcases, ";vdoslux=2003;knllux=3" );
+#else
+  checkXS( testcases, ntestcases, "" );
+#endif
 
   NCPLUGIN_MSG("Cross-section reference checks passed");
 
