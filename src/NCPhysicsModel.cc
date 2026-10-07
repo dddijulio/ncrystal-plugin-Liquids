@@ -535,16 +535,20 @@ NCP::PhysicsModel NCP::PhysicsModel::createFromInfo( const NC::Info& info, int v
 
 // Wraps a finished S(alpha,beta) in a scatter process. knllux >= 0 (NCrystal >= 4.4.7
 // only) selects the next-gen SABScatterNG; otherwise the legacy SABScatter is used.
-static NC::ProcImpl::ProcPtr makeSABScatterProc( NC::SABData&& sabdata, int knllux )
+// For SABScatterNG, teff is the effective temperature used by the short collision
+// time (SCT) model extending the kernel beyond its alpha-beta grid.
+static NC::ProcImpl::ProcPtr makeSABScatterProc( NC::SABData&& sabdata, int knllux,
+                                                 NC::Temperature teff )
 {
 #if NCRYSTAL_VERSION >= 4004007
   if ( knllux >= 0 ) {
     auto sabdata_so = NC::makeSO<const NC::SABData>( std::move(sabdata) );
-    auto sabext = NC::SAB::createSABExtendedNoCache( knllux, sabdata_so );
+    auto sabext = NC::SAB::createSABExtendedNoCache( knllux, sabdata_so, teff );
     return NC::makeSO<NC::SABScatterNG>( std::move(sabext), sabdata_so->boundXS() );
   }
 #else
   (void)knllux;
+  (void)teff;
 #endif
   return NC::makeSO<NC::SABScatter>( std::move(sabdata) );
 }
@@ -582,6 +586,17 @@ NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liq
        // Calculate MSD from VDOS data
        NC::VDOSEval vdosEval(di_vdos->vdosData());
        double msd = vdosEval.getMSD();
+
+       // Effective temperature for the SCT extension of the kernel: the
+       // weighted combination of the solid-like part (from the VDOS) and the
+       // translational part (diffusion, whose effective temperature is T), as
+       // for the effective temperature of a LEAPR kernel:
+       const double ws = liquid_data[lbl].ws;
+       const double wt = liquid_data[lbl].wt;
+       const NC::Temperature teff{ ws + wt > 0.0
+                                   ? ( ws * vdosEval.calcEffectiveTemperature()
+                                       + wt * temperature ) / ( ws + wt )
+                                   : temperature };
        
        // Calculate dwi, used for the Debye-Waller factor exp(-alpha*dwi)
        double dwi = msd * 2.0 * mass_neutron / (hbar * hbar) * bk * temperature * liquid_data[lbl].ws;  // unitless
@@ -601,7 +616,7 @@ NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liq
        // Young-Koppel (+ coherent correction if Skold or Vineyard)
        if (!liquid_data[lbl].yk_model.empty()) {
          NC::SABData yk_data = applyYoungKoppel(s_s, liquid_data[lbl].yk_model, di->atomData(), liquid_data[lbl]);
-         components.push_back({di->fraction(), makeSABScatterProc(std::move(yk_data), knllux)});
+         components.push_back({di->fraction(), makeSABScatterProc(std::move(yk_data), knllux, teff)});
 
        // Coherent correction only (no Young-Koppel)
        } else if (liquid_data[lbl].coherent_model == "SKOLD" || liquid_data[lbl].coherent_model == "VINEYARD") {
@@ -621,11 +636,11 @@ NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liq
          }
          NC::SABData corrected(NC::VectD(alpha_grid), NC::VectD(beta_grid), std::move(sab_out),
                                s_s.temperature(), s_s.boundXS(), s_s.elementMassAMU(), s_s.suggestedEmax());
-         components.push_back({di->fraction(), makeSABScatterProc(std::move(corrected), knllux)});
+         components.push_back({di->fraction(), makeSABScatterProc(std::move(corrected), knllux, teff)});
 
        // Translational kernel only
        } else {
-         components.push_back({di->fraction(), makeSABScatterProc(std::move(s_s), knllux)});
+         components.push_back({di->fraction(), makeSABScatterProc(std::move(s_s), knllux, teff)});
        }
 
      }
