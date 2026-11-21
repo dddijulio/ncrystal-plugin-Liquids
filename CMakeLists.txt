@@ -38,16 +38,19 @@ if ( DEFINED SKBUILD_PROJECT_NAME )
   endif()
 endif()
 
-#Must always build against NCrystal:
-if( NOT DEFINED "NCrystal_DIR" )
-  #Need to invoke "ncrystal-config --show cmakedir" if we want to be able to
-  #work with ncrystal-core installed via python wheels:
+#Must always build against NCrystal. Find it directly if possible (e.g. via
+#CMAKE_PREFIX_PATH or NCrystal_DIR, or when this project is itself built with
+#scikit-build-core against ncrystal-core from Python wheels), and only otherwise
+#ask "ncrystal-config --show cmakedir" (which is not always possible, e.g. when
+#cross-compiling):
+find_package( NCrystal 4.0.0 QUIET )
+if ( NOT NCrystal_FOUND )
   execute_process(
     COMMAND ncrystal-config --show cmakedir
     OUTPUT_VARIABLE "NCrystal_DIR" OUTPUT_STRIP_TRAILING_WHITESPACE
   )
+  find_package( NCrystal 4.0.0 REQUIRED )
 endif()
-find_package( NCrystal 4.0.0 REQUIRED )
 
 function( ncrystal_srcfileglob varname pattern )
   #Glob while ignoring temporary files.
