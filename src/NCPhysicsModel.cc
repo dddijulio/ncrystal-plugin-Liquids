@@ -28,12 +28,8 @@
 #include <iomanip>
 #include "NCrystal/internal/vdos/NCVDOSToScatKnl.hh"
 #include "NCrystal/internal/sabscatter/NCSABScatter.hh"
-#if NCRYSTAL_VERSION >= 4004007
-#include "NCrystal/internal/sabscatter/NCSABScatterNG.hh"
-#endif
 #include "NCrystal/internal/sab/NCSABFactory.hh"
 #include "NCrystal/internal/sab/NCSABExtender.hh"
-#include "NCrystal/internal/sab/NCSABIntegrator.hh"
 #include "NCrystal/internal/sab/NCSABUtils.hh"
 #include "NCrystal/internal/utils/NCMsg.hh"
 #include "NCrystal/internal/freegas/NCFreeGas.hh"
@@ -46,6 +42,13 @@
 #include <fstream>
 
 using namespace std;
+
+#if NCRYSTAL_VERSION >= 4004007
+//VDOSEval moved to the NC::VDOS namespace in NCrystal 4.4.7:
+using VDOSEval = NC::VDOS::VDOSEval;
+#else
+using VDOSEval = NC::VDOSEval;
+#endif
 
 // Forward declarations
 double egelstaffDiffusion(double alpha, double beta, double c, double wt_diffusion);
@@ -533,24 +536,22 @@ NCP::PhysicsModel NCP::PhysicsModel::createFromInfo( const NC::Info& info, int v
   return PhysicsModel(liquid_data,info,vdoslux,knllux);
 }
 
-// Wraps a finished S(alpha,beta) in a scatter process. knllux >= 0 (NCrystal >= 4.4.7
-// only) selects the next-gen SABScatterNG; otherwise the legacy SABScatter is used.
-// For SABScatterNG, teff is the effective temperature used by the short collision
-// time (SCT) model extending the kernel beyond its alpha-beta grid.
+// Wraps a finished S(alpha,beta) in a scatter process. For NCrystal >= 4.4.7,
+// knllux is the luxury level of the kernel processing and teff the effective
+// temperature used by the short collision time (SCT) model extending the kernel
+// beyond its alpha-beta grid. Older NCrystal versions ignore both.
 static NC::ProcImpl::ProcPtr makeSABScatterProc( NC::SABData&& sabdata, int knllux,
                                                  NC::Temperature teff )
 {
 #if NCRYSTAL_VERSION >= 4004007
-  if ( knllux >= 0 ) {
-    auto sabdata_so = NC::makeSO<const NC::SABData>( std::move(sabdata) );
-    auto sabext = NC::SAB::createSABExtendedNoCache( knllux, sabdata_so, teff );
-    return NC::makeSO<NC::SABScatterNG>( std::move(sabext), sabdata_so->boundXS() );
-  }
+  auto sabdata_so = NC::makeSO<const NC::SABData>( std::move(sabdata) );
+  auto sabext = NC::SAB::createSABExtendedNoCache( knllux, sabdata_so, teff );
+  return NC::makeSO<NC::SABScatter>( std::move(sabext), sabdata_so->boundXS() );
 #else
   (void)knllux;
   (void)teff;
-#endif
   return NC::makeSO<NC::SABScatter>( std::move(sabdata) );
+#endif
 }
 
 NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liquid_data,
@@ -584,7 +585,7 @@ NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liq
        double delta_beta_vdos = (emax / rho.size()) / (bk * std::abs(temperature));  // dimensionless beta spacing
 
        // Calculate MSD from VDOS data
-       NC::VDOSEval vdosEval(di_vdos->vdosData());
+       VDOSEval vdosEval(di_vdos->vdosData());
        double msd = vdosEval.getMSD();
 
        // Effective temperature for the SCT extension of the kernel: the
@@ -602,11 +603,12 @@ NCP::PhysicsModel::PhysicsModel( std::unordered_map<std::string, LiquidInfo> liq
        double dwi = msd * 2.0 * mass_neutron / (hbar * hbar) * bk * temperature * liquid_data[lbl].ws;  // unitless
        
 #if NCRYSTAL_VERSION >= 4004007
-       NC::ScatKnlData skd = NC::VDOS::createScatteringKernel(di_vdos->vdosData(), NC::VDOS::VDOSLux(vdoslux));
+       NC::SAB::ScatKnlData skd = NC::VDOS::createScatteringKernel(di_vdos->vdosData(), NC::VDOS::VDOSLux(vdoslux));
+       NC::SABData sabdata = NC::SAB::transformKernelToStdFormat(std::move(skd));
 #else
        NC::ScatKnlData skd = NC::createScatteringKernel(di_vdos->vdosData(), vdoslux,  0, NC::VDOSGn::TruncAndThinningChoices::Default);
-#endif
        NC::SABData sabdata = NC::SABUtils::transformKernelToStdFormat(std::move(skd));
+#endif
 
        ConvolutionParams convParams = {dwi, delta_beta_vdos, awr, liquid_data[lbl]};
 
